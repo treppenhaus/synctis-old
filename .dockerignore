@@ -1,0 +1,8 @@
+**/.gradle/
+**/build/
+.idea/
+.env
+.env.*
+.google-auth
+client_secret*.json
+*.log

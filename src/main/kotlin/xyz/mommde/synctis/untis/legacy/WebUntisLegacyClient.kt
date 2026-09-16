@@ -75,7 +75,8 @@ class WebUntisLegacyClient(
                 Method: ${requestBuilder.method}
                 Message: ${body.error.message}
                 Code: ${body.error.code}
-                """.trimIndent()
+                """.trimIndent(),
+                code = body.error.code
             )
         }
         return body
@@ -97,7 +98,17 @@ class WebUntisLegacyClient(
 
         jSessionId = null
         personId = null
+        currentSchoolyear = null
         logger.info { "Logout successful. JSESSIONID cleared" }
+    }
+
+    private var currentSchoolyear: WebUntisLegacySchoolyearResponse? = null
+
+    private suspend fun getCurrentSchoolyear(): WebUntisLegacySchoolyearResponse? {
+        if (currentSchoolyear == null) {
+            currentSchoolyear = sendPacket(requestBuilder = WebUntisLegacyGetCurrentSchoolyearMethod).result
+        }
+        return currentSchoolyear
     }
 
     /**
@@ -111,14 +122,33 @@ class WebUntisLegacyClient(
             throw IllegalStateException("Not logged in. Please call login() first")
 
         val monday = week.toJavaLocalDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).toKotlinLocalDate()
+        val nextMonday = monday.plus(DatePeriod(days = 7))
+
+        val schoolyear = runCatching { getCurrentSchoolyear() }.getOrNull()
+        val startDate = if (schoolyear != null) maxOf(monday, schoolyear.startDate) else monday
+        val endDate = if (schoolyear != null) minOf(nextMonday, schoolyear.endDate) else nextMonday
+
+        if (startDate > endDate) {
+            logger.info { "Requested range ($monday to $nextMonday) is outside the current school year. Skipping." }
+            return emptyList()
+        }
+
         val rooms = getRooms()
         logger.info { "Loaded ${rooms?.size} rooms for referencing with Timetable" }
 
         val subjects = getSubjects()
         logger.info { "Loaded ${subjects?.size} subjects for referencing with Timetable" }
 
-        val timetableMethod = WebUntisLegacyTimetableRequestMethod(personId!!, monday, monday.plus(DatePeriod(days = 7)))
-        val timetable = sendPacket(requestBuilder = timetableMethod).result!!
+        val timetableMethod = WebUntisLegacyTimetableRequestMethod(personId!!, startDate, endDate)
+        val timetable = try {
+            sendPacket(requestBuilder = timetableMethod).result ?: emptyList()
+        } catch (e: WebUntisLegacyRPCError) {
+            if (e.code == -8507 || e.message?.contains("-8507") == true) {
+                logger.warn { "Dates $startDate to $endDate not within a single school year: ${e.message}" }
+                return emptyList()
+            }
+            throw e
+        }
 
         return timetable.map { subjectIdObject ->
             if (subjectIdObject.subjects.size > 1)

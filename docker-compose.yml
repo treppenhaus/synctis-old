@@ -1,0 +1,24 @@
+services:
+  synctis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/mommde/synctis:latest
+    container_name: synctis
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:${PORT:-8080}"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - HOST_KTOR=0.0.0.0
+      - PORT=${PORT:-8080}
+      - GOOGLE_AUTH_FILE=${GOOGLE_AUTH_FILE:-/data/.google-auth}
+    volumes:
+      - synctis-data:/data
+      # Alternatively, you can use a local bind mount instead of a named volume:
+      # - ./data:/data
+
+volumes:
+  synctis-data:

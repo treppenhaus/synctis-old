@@ -25,5 +25,6 @@ fun googleAuthenticationFileOrNull(path: Path = Path(Config.Google.AUTH_FILE)): 
 
 fun writeOauth2Token(path: Path = Path(Config.Google.AUTH_FILE), oauthToken: OAuthAccessTokenResponse.OAuth2) {
     logger.info { "Writing Google OAuth2 Credentials" }
+    path.parent?.createDirectories()
     path.writeText(json.encodeToString(oauthToken.toOAuth2DataHolder()))
 }
